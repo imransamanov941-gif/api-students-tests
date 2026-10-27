@@ -4,3 +4,4 @@ __pycache__/
 allure-results/
 logs/
 scratch.py
+*.code-workspace
