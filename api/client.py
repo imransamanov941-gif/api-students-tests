@@ -35,3 +35,21 @@ class StudentsClient:
 
     def delete_student(self, student_id):
         return self._request("DELETE", f"/student/{student_id}")
+
+
+
+
+        def retry(self, method, *args, attempts=20):
+        """Повторяет запрос, пока сервер не вернёт status 1."""
+        with allure.step(f"Повторять запрос до успеха (до {attempts} раз)"):
+            response = None
+            for _ in range(attempts):
+                response = method(*args)
+                if response.json().get("status") == 1:
+                    break
+        return response
+
+    def delete_everywhere(self, student_id, attempts=15):
+        """Удаляет много раз, чтобы задеть все копии сервера."""
+        with allure.step(f"Удалить студента {student_id} ({attempts} запросов)"):
+            return [self.delete_student(student_id) for _ in range(attempts)]
