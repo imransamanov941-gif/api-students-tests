@@ -55,4 +55,4 @@ def student(client, student_data):
         student_id = response.json()["student"]["id"]
     yield {"id": student_id, "data": student_data}
     with allure.step("Очистка: удалить студента"):
-        client.delete_student(student_id)
+                client.delete_everywhere(student_id)
