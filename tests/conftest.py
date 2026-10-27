@@ -1,5 +1,6 @@
 import logging
 import re
+import uuid
 from pathlib import Path
 
 import allure
@@ -33,3 +34,25 @@ def test_log(request):
 @pytest.fixture
 def client():
     return StudentsClient()
+
+
+@pytest.fixture
+def student_data():
+    suffix = uuid.uuid4().hex[:8]
+    return {
+        "name": f"Test {suffix}",
+        "email": f"test_{suffix}@example.com",
+        "phone_no": "+79990001122",
+        "gender": "male",
+        "status": 1,
+    }
+
+
+@pytest.fixture
+def student(client, student_data):
+    with allure.step("Подготовка: создать студента"):
+        response = client.create_student(student_data)
+        student_id = response.json()["student"]["id"]
+    yield {"id": student_id, "data": student_data}
+    with allure.step("Очистка: удалить студента"):
+        client.delete_student(student_id)
