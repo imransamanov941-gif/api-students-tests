@@ -36,10 +36,7 @@ class StudentsClient:
     def delete_student(self, student_id):
         return self._request("DELETE", f"/student/{student_id}")
 
-
-
-
-        def retry(self, method, *args, attempts=20):
+    def retry(self, method, *args, attempts=20):
         """Повторяет запрос, пока сервер не вернёт status 1."""
         with allure.step(f"Повторять запрос до успеха (до {attempts} раз)"):
             response = None

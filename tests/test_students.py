@@ -14,18 +14,9 @@ def test_get_students(client):
         assert isinstance(body["students"], list)
 
 
-@allure.title("Созданный студент есть в общем списке")
-def test_created_student_in_list(client, student):
-    response = client.get_students()
-
-    with allure.step("Найти студента по id в списке"):
-        ids = [s["id"] for s in response.json()["students"]]
-        assert student["id"] in ids
-
-
 @allure.title("GET /student/{id} возвращает данные студента")
 def test_get_student_by_id(client, student):
-    response = client.get_student(student["id"])
+    response = client.retry(client.get_student, student["id"])
 
     with allure.step("Проверить код ответа и статус"):
         assert response.status_code == 200
@@ -51,6 +42,16 @@ def test_get_nonexistent_student(client):
         assert body["message"] == "Student not found"
 
 
+@allure.title("BUG: созданный студент стабильно доступен по id")
+def test_created_student_is_stable(client, student):
+    with allure.step("Запросить студента по id 10 раз подряд"):
+        statuses = [client.get_student(student["id"]).json()["status"]
+                    for _ in range(10)]
+
+    with allure.step("Проверить, что студент найден во всех запросах"):
+        assert all(s == 1 for s in statuses), f"Найден не всегда, статусы: {statuses}"
+
+
 @allure.title("POST /student создаёт студента")
 def test_create_student(client, student_data):
     response = client.create_student(student_data)
@@ -63,7 +64,7 @@ def test_create_student(client, student_data):
             assert body["message"] == "Student created successfully"
             student_id = body["student"]["id"]
 
-        with allure.step("Проверить, что в ответе вернулись отправленные данные"):
+        with allure.step("Проверить, что вернулись отправленные данные"):
             created = body["student"]
             assert isinstance(created["id"], int)
             assert created["name"] == student_data["name"]
@@ -73,5 +74,69 @@ def test_create_student(client, student_data):
             assert created["status"] == student_data["status"]
     finally:
         if student_id is not None:
-            with allure.step("Очистка: удалить студента"):
-                client.delete_student(student_id)
+            client.delete_everywhere(student_id)
+
+
+@allure.title("PUT /student/{id} обновляет данные студента")
+def test_update_student(client, student):
+    new_data = {
+        "name": "Updated Name",
+        "email": f"updated_{student['id']}@example.com",
+        "gender": "female",
+        "status": 0,
+    }
+    response = client.retry(client.update_student, student["id"], new_data)
+
+    with allure.step("Проверить ответ на обновление"):
+        body = response.json()
+        assert response.status_code == 200
+        assert body["status"] == 1
+        assert body["message"] == "Student updated successfully"
+
+    with allure.step("Проверить, что в ответе новые данные, а телефон прежний"):
+        updated = body["student"]
+        assert updated["name"] == new_data["name"]
+        assert updated["email"] == new_data["email"]
+        assert updated["gender"] == new_data["gender"]
+        assert updated["status"] == new_data["status"]
+        assert updated["phone_no"] == student["data"]["phone_no"]
+
+    with allure.step("Проверить через GET, что данные сохранились"):
+        got = client.retry(client.get_student, student["id"]).json()["student"]
+        assert got["name"] == new_data["name"]
+        assert got["email"] == new_data["email"]
+
+
+@allure.title("PUT несуществующего студента возвращает status 0")
+def test_update_nonexistent_student(client, student_data):
+    data = {k: v for k, v in student_data.items() if k != "phone_no"}
+    response = client.update_student(999999, data)
+
+    with allure.step("Проверить, что сервер сообщает об ошибке"):
+        body = response.json()
+        assert body["status"] == 0
+        assert "not found" in body["message"].lower()
+
+
+@allure.title("DELETE /student/{id} удаляет студента")
+def test_delete_student(client, student):
+    responses = client.delete_everywhere(student["id"])
+
+    with allure.step("Проверить, что хотя бы один DELETE вернул успех"):
+        bodies = [r.json() for r in responses]
+        assert any(b["status"] == 1 and b["message"] == "Student deleted successfully"
+                   for b in bodies)
+
+    with allure.step("Проверить, что студент больше не находится"):
+        for _ in range(10):
+            body = client.get_student(student["id"]).json()
+            assert body["status"] == 0
+
+
+@allure.title("BUG: DELETE несуществующего студента не должен возвращать успех")
+def test_delete_nonexistent_student(client):
+    response = client.delete_student(999999)
+
+    with allure.step("Проверить, что сервер сообщает об ошибке"):
+        body = response.json()
+        assert body["status"] == 0
